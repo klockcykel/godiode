@@ -1,3 +1,5 @@
+![presentation title page](https://github.com/klockcykel/godiode/raw/main/titlepage.png)
+
 # godiode
 PoC for reliable file transfers over a data diode. Presented at SEC-T 2021.
 
