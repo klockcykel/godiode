@@ -1,0 +1,19 @@
+version: "3.0"
+services:
+  godiode:
+    image: golang:1.17-alpine
+    network_mode: "host"
+    volumes:
+      - "./src:/src:ro"
+      - "./out:/out:ro"
+      - "./in:/in:rw"
+    working_dir: /src
+    entrypoint: go run .
+  
+  build:
+    image: golang:1.17-alpine
+    volumes:
+      - "./src:/src:ro"
+      - "./bin:/build:rw"
+    working_dir: /src
+    entrypoint: go build -o /build/godiode .
