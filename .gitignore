@@ -5,6 +5,7 @@
 *.so
 *.dylib
 *~
+src/pkg/mod/cache/lock
 
 # Test binary, built with `go test -c`
 *.test
