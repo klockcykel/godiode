@@ -10,6 +10,7 @@ type ReceiverConfig struct {
 	Delete           bool        `json:"delete"`
 	FilePermission   fs.FileMode `json:"filePermission"`
 	FolderPermission fs.FileMode `json:"folderPermission"`
+	TmpDir           string      `json:"tmpDir"`
 }
 
 type Config struct {
@@ -34,5 +35,6 @@ var config = Config{
 		Delete:           false,
 		FilePermission:   0600,
 		FolderPermission: 0700,
+		TmpDir:           "",
 	},
 }

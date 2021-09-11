@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/fs"
 	"path/filepath"
+	"strings"
 
 	//	"flag"
 	"crypto/hmac"
@@ -47,6 +48,7 @@ type PendingFileTransfer struct {
 type Receiver struct {
 	conf                    *Config
 	dir                     string
+	tmpDir                  string
 	manifest                *Manifest
 	manifestId              int
 	pendingFileTransfer     *PendingFileTransfer
@@ -147,8 +149,8 @@ func (r *Receiver) onFileTransferStart(buff []byte, read int) error {
 		return errors.New("Invalid signature in file start packet for " + fp)
 	}
 
-	//TODO: Use tmp dir
-	file, err := os.OpenFile(fp, os.O_RDWR|os.O_CREATE, r.conf.Receiver.FilePermission)
+	tmpFile := path.Join(r.tmpDir, "godiodetmp."+strconv.FormatUint(uint64(manifestId), 16)+"."+strconv.Itoa(fileIndex))
+	file, err := os.OpenFile(tmpFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, r.conf.Receiver.FilePermission)
 	if err != nil {
 		return errors.New("Failed to create file " + fp + ": " + err.Error())
 	}
@@ -162,6 +164,29 @@ func (r *Receiver) onFileTransferStart(buff []byte, read int) error {
 		modts:         mf.modts,
 	}
 	return nil
+}
+
+func (r *Receiver) moveTmpFile(pft *PendingFileTransfer, tmpFile string) {
+	timeTaken := float64(time.Duration.Seconds(time.Since(pft.transferStart)))
+	err := os.Rename(tmpFile, pft.filename)
+	if err != nil {
+		//TODO: fallback to copy+rm (file may be located on another fs)
+		fmt.Fprintf(os.Stderr, "Failed to move tmp file "+pft.filename+" "+err.Error()+"\n")
+		return
+	}
+	err = os.Chtimes(pft.filename, time.Unix(int64(pft.modts), 0), time.Unix(int64(pft.modts), 0))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to set mtime on "+pft.filename+"\n")
+	}
+	if r.conf.Verbose {
+		var speed int = 0
+		if timeTaken > 0 {
+			speed = int(math.Round(float64((8*pft.size)/1000) / timeTaken))
+		}
+		h := pft.hash.Sum(nil)
+		fmt.Println("Successfully received " + pft.filename + ", checksum=" + hex.EncodeToString(h) + " size=" + strconv.FormatInt(int64(pft.size), 10) + " " + strconv.Itoa(speed) + "kbit/s")
+	}
+	return
 }
 
 /*
@@ -212,22 +237,9 @@ func (r *Receiver) onFileTransferComplete(buff []byte, read int) error {
 	if !bytes.Equal(h, pft.hash.Sum(nil)) {
 		os.Remove(pft.filename)
 		return errors.New("Data checksum error for received file " + pft.filename)
-	} else {
-		if r.conf.Verbose {
-			timeTaken := float64(time.Duration.Seconds(time.Since(pft.transferStart)))
-			var speed int = 0
-			if timeTaken > 0 {
-				speed = int(math.Round(float64((8*pft.size)/1000) / timeTaken))
-			}
-			h := pft.hash.Sum(nil)
-			fmt.Println("Successfully received " + pft.filename + ", checksum=" + hex.EncodeToString(h) + " size=" + strconv.FormatInt(int64(pft.size), 10) + " " + strconv.Itoa(speed) + "kbit/s")
-		}
-		err := os.Chtimes(pft.filename, time.Unix(int64(pft.modts), 0), time.Unix(int64(pft.modts), 0))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to set mtime on "+pft.filename+"\n")
-		}
 	}
-
+	tmpFile := path.Join(r.tmpDir, "godiodetmp."+strconv.FormatUint(uint64(manifestId), 16)+"."+strconv.Itoa(fileIndex))
+	go r.moveTmpFile(pft, tmpFile)
 	return nil
 }
 
@@ -415,6 +427,34 @@ func receive(conf *Config, dir string) error {
 		return errors.New("Receive dir is not a directory")
 	}
 
+	tmpDir := conf.Receiver.TmpDir
+	if tmpDir == "" {
+		tmpDir = path.Join(dir, ".tmp")
+	}
+	err = os.Mkdir(tmpDir, 0700)
+	if err != nil && !errors.Is(err, fs.ErrExist) {
+		return errors.New("Could not create tmp dir")
+	}
+	finfo, err = os.Stat(tmpDir)
+	if err != nil {
+		return errors.New("Failed to stat tmp dir " + err.Error())
+	}
+	if !finfo.IsDir() {
+		return errors.New("Tmp dir is not a directory")
+	}
+	tmpFiles, err := os.ReadDir(tmpDir)
+	if err != nil {
+		return errors.New("Failed to read tmp dir " + err.Error())
+	}
+	for i := range tmpFiles {
+		if strings.HasPrefix(tmpFiles[i].Name(), "godiodetmp.") {
+			err = os.Remove(path.Join(tmpDir, tmpFiles[i].Name()))
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to remove tmp file: "+tmpFiles[i].Name()+" "+err.Error()+"\n")
+			}
+		}
+	}
+
 	maddr, err := net.ResolveUDPAddr("udp", conf.MulticastAddr)
 	if err != nil {
 		return errors.New("Failed to resolve multicast address: " + err.Error())
@@ -438,8 +478,9 @@ func receive(conf *Config, dir string) error {
 
 	buff := make([]byte, conf.MaxPacketSize)
 	receiver := Receiver{
-		conf: conf,
-		dir:  dir,
+		conf:   conf,
+		dir:    dir,
+		tmpDir: tmpDir,
 	}
 
 	for {

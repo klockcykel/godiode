@@ -66,6 +66,7 @@ func main() {
 	flag.StringVar(&config.NIC, "interface", config.NIC, "interface to bind to")
 	flag.BoolVar(&config.Receiver.Delete, "delete", config.Receiver.Delete, "delete files (receiver only)")
 	flag.BoolVar(&config.Verbose, "verbose", config.Verbose, "verbose output")
+	flag.StringVar(&config.Receiver.TmpDir, "tmpdir", config.Receiver.TmpDir, "tmp dir to use (receiver only)")
 	flag.Parse()
 
 	// load defaults from file
