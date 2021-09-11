@@ -6,6 +6,7 @@
 *.dylib
 *~
 src/pkg/mod/cache/lock
+godiode.conf
 
 # Test binary, built with `go test -c`
 *.test
