@@ -68,6 +68,7 @@ func main() {
 	flag.BoolVar(&config.Verbose, "verbose", config.Verbose, "verbose output")
 	flag.StringVar(&config.Receiver.TmpDir, "tmpdir", config.Receiver.TmpDir, "tmp dir to use (receiver only)")
 	flag.IntVar(&config.ResendCount, "resendcount", config.ResendCount, "how many times to re-transmit from the sender")
+	flag.BoolVar(&config.ResendManifest, "resendmanifest", config.ResendManifest, "resend the manifest between every file")
 	flag.Parse()
 
 	// load defaults from file

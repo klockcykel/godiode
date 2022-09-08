@@ -265,6 +265,7 @@ func send(conf *Config, dir string) error {
 
 		finfo, err := os.Stat(dir)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error sending : "+err.Error()+"\n")
 			return err
 		}
 
@@ -278,6 +279,15 @@ func send(conf *Config, dir string) error {
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error sending file: "+manifest.files[i].path+" "+err.Error()+"\n")
 					continue
+				}
+
+				if conf.ResendManifest {
+					err = sendManifest(conf, c, manifest, manifestId)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "Error sending manifest: "+err.Error()+"\n")
+						return err
+					}
+
 				}
 			}
 		}
