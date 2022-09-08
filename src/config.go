@@ -22,6 +22,7 @@ type Config struct {
 	Verbose       bool           `json:"verbose"`
 	Sender        SenderConfig   `json:"sender"`
 	Receiver      ReceiverConfig `json:"receiver"`
+	ResendCount   int            `json:"resendcount"`
 }
 
 var config = Config{
