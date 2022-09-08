@@ -311,11 +311,13 @@ func (r *Receiver) handleManifestReceived() error {
 			}
 		}
 		for d, _ := range dm {
-			err := os.Remove(d)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to delete dir "+d+"\n")
-			} else if r.conf.Verbose {
-				fmt.Println("Removed dir " + d)
+			if d != r.tmpDir {
+				err := os.Remove(d)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to delete dir "+d+"\n")
+				} else if r.conf.Verbose {
+					fmt.Println("Removed dir " + d)
+				}
 			}
 		}
 	}
