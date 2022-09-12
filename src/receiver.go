@@ -51,6 +51,7 @@ type Receiver struct {
 	tmpDir                  string
 	manifest                *Manifest
 	manifestId              int
+	lastManifestId          int
 	pendingFileTransfer     *PendingFileTransfer
 	pendingManifestTransfer *PendingManifestTransfer
 }
@@ -267,8 +268,8 @@ func (r *Receiver) handleManifestReceived() error {
 		fmt.Println("Received valid manifest with " + strconv.Itoa(len(r.manifest.dirs)) + " dirs, " + strconv.Itoa(len(r.manifest.files)) + " files")
 	}
 	if r.conf.Receiver.Delete {
-		var dm map[string]bool
-		var fm map[string]FileRecord
+		dm := map[string]bool{}
+		fm := map[string]FileRecord{}
 		filepath.WalkDir(r.dir, func(p string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return nil
@@ -311,11 +312,13 @@ func (r *Receiver) handleManifestReceived() error {
 			}
 		}
 		for d, _ := range dm {
-			err := os.Remove(d)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to delete dir "+d+"\n")
-			} else if r.conf.Verbose {
-				fmt.Println("Removed dir " + d)
+			if d != r.tmpDir {
+				err := os.Remove(d)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to delete dir "+d+"\n")
+				} else if r.conf.Verbose {
+					fmt.Println("Removed dir " + d)
+				}
 			}
 		}
 	}
@@ -338,6 +341,11 @@ func (r *Receiver) onManifestPacket(buff []byte, read int) error {
 		return nil
 	}
 	manifestId := int(binary.BigEndian.Uint32(buff[1:]))
+
+	if r.lastManifestId == manifestId {
+		//We've already got this manifest.
+		return nil
+	}
 	part := int(binary.BigEndian.Uint16(buff[5:]))
 	pmt := r.pendingManifestTransfer
 	if pmt != nil {
@@ -357,8 +365,15 @@ func (r *Receiver) onManifestPacket(buff []byte, read int) error {
 				if err != nil {
 					return err
 				}
-				r.manifest = manifest
-				r.handleManifestReceived()
+				if r.lastManifestId != manifestId {
+					r.manifest = manifest
+					err = r.handleManifestReceived()
+					if err != nil {
+						return err
+					}
+
+					r.lastManifestId = manifestId
+				}
 				return nil
 			}
 			pmt.index++
@@ -380,8 +395,15 @@ func (r *Receiver) onManifestPacket(buff []byte, read int) error {
 			if err != nil {
 				return err
 			}
-			r.manifest = manifest
-			r.handleManifestReceived()
+			if r.lastManifestId != manifestId {
+				r.manifest = manifest
+				err = r.handleManifestReceived()
+				if err != nil {
+					return err
+				}
+
+				r.lastManifestId = manifestId
+			}
 			return nil
 		}
 		r.pendingManifestTransfer = &PendingManifestTransfer{manifestData, read, 1}

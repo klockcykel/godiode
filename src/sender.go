@@ -259,30 +259,42 @@ func send(conf *Config, dir string) error {
 
 	//	log.Println(THROTTLE.nsPerToken, THROTTLE.capacity, THROTTLE.tokens, THROTTLE.last)
 
-	// wait some to let the receiver create dirs etc
-	time.Sleep(1000 * time.Millisecond)
+	for rs := 0; rs < conf.ResendCount; rs++ {
+		// wait some to let the receiver create dirs etc
+		time.Sleep(1000 * time.Millisecond)
 
-	finfo, err := os.Stat(dir)
-	if err != nil {
-		return err
-	}
+		finfo, err := os.Stat(dir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error sending : "+err.Error()+"\n")
+			return err
+		}
 
-	if !finfo.IsDir() {
-		err = sendFile(conf, c, manifestId, 0, dir)
-		return err
-	} else {
-		dir = dir + "/"
-		for i := 0; i < len(manifest.files); i++ {
-			err = sendFile(conf, c, manifestId, uint32(i), dir+manifest.files[i].path)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error sending file: "+manifest.files[i].path+" "+err.Error()+"\n")
-				continue
+		if !finfo.IsDir() {
+			err = sendFile(conf, c, manifestId, 0, dir)
+			return err
+		} else {
+			dir = dir + "/"
+			for i := 0; i < len(manifest.files); i++ {
+				err = sendFile(conf, c, manifestId, uint32(i), dir+manifest.files[i].path)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error sending file: "+manifest.files[i].path+" "+err.Error()+"\n")
+					continue
+				}
+
+				if conf.ResendManifest {
+					err = sendManifest(conf, c, manifest, manifestId)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "Error sending manifest: "+err.Error()+"\n")
+						return err
+					}
+
+				}
 			}
 		}
-	}
 
-	if conf.Verbose {
-		fmt.Println("All files sent")
+		if conf.Verbose {
+			fmt.Printf("All files sent. Transmission %d of %d \n", rs+1, conf.ResendCount)
+		}
 	}
 	return nil
 }
