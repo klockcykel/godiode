@@ -67,19 +67,20 @@ func sendManifest(conf *Config, c *net.UDPConn, manifest *Manifest, manifestId u
 	for i := 0; offset < len(manifestData); i++ {
 		binary.BigEndian.PutUint16(buff[5:], uint16(i))
 		l := 7
+		copied := 0
 		if i == 0 {
 			binary.BigEndian.PutUint32(buff[l:], uint32(len(manifestData)))
 			l += 4
-			copied := copy(buff[l:], manifestData[offset:])
+			copied = copy(buff[l:], manifestData[offset:])
 			l += copied
 			offset += copied
 		} else {
-			copied := copy(buff[l:], manifestData[offset:])
+			copied = copy(buff[l:], manifestData[offset:])
 			l += copied
 			offset += copied
 		}
 		c.Write(buff[:l])
-		time.Sleep(50 * time.Millisecond)
+		throttle(copied)
 	}
 	return nil
 }
@@ -158,30 +159,7 @@ func sendFile(conf *Config, c *net.UDPConn, manifestId uint32, fIndex uint32, f 
 		}
 
 		//		c.WriteMsgUDP(buff[:(read+1)], nil, maddr)
-		if THROTTLE.enabled {
-			plen := read + 1 + HEADER_OVERHEAD
-			for {
-				if THROTTLE.tokens >= int64(plen) {
-					THROTTLE.tokens -= int64(plen)
-					break
-				}
-				now := time.Now()
-				ns := time.Duration.Nanoseconds(now.Sub(THROTTLE.last))
-				//log.Println(ns, ns/THROTTLE.nsPerToken, THROTTLE.tokens)
-				newValue := THROTTLE.tokens + int64(math.Round(float64(ns)/THROTTLE.nsPerToken))
-				if newValue >= int64(plen) {
-					THROTTLE.tokens = newValue
-					if THROTTLE.tokens > THROTTLE.capacity {
-						THROTTLE.tokens = THROTTLE.capacity
-					}
-					THROTTLE.last = now
-				} else {
-					sleepTime := math.Ceil(float64(int64(plen)-newValue) * THROTTLE.nsPerToken)
-					//log.Println(sleepTime, THROTTLE.tokens)
-					time.Sleep(time.Duration(sleepTime))
-				}
-			}
-		}
+		throttle(read)
 		c.Write(buff[:(read + 1)])
 		h.Write(buff[1:(read + 1)])
 	}
@@ -206,6 +184,33 @@ func sendFile(conf *Config, c *net.UDPConn, manifestId uint32, fIndex uint32, f 
 	time.Sleep(100 * time.Millisecond)
 
 	return nil
+}
+
+func throttle(read int) {
+	if THROTTLE.enabled {
+		plen := read + 1 + HEADER_OVERHEAD
+		for {
+			if THROTTLE.tokens >= int64(plen) {
+				THROTTLE.tokens -= int64(plen)
+				break
+			}
+			now := time.Now()
+			ns := time.Duration.Nanoseconds(now.Sub(THROTTLE.last))
+			//log.Println(ns, ns/THROTTLE.nsPerToken, THROTTLE.tokens)
+			newValue := THROTTLE.tokens + int64(math.Round(float64(ns)/THROTTLE.nsPerToken))
+			if newValue >= int64(plen) {
+				THROTTLE.tokens = newValue
+				if THROTTLE.tokens > THROTTLE.capacity {
+					THROTTLE.tokens = THROTTLE.capacity
+				}
+				THROTTLE.last = now
+			} else {
+				sleepTime := math.Ceil(float64(int64(plen)-newValue) * THROTTLE.nsPerToken)
+				//log.Println(sleepTime, THROTTLE.tokens)
+				time.Sleep(time.Duration(sleepTime))
+			}
+		}
+	}
 }
 
 func send(conf *Config, dir string) error {
