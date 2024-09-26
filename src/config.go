@@ -39,4 +39,5 @@ var config = Config{
 		FolderPermission: 0700,
 		TmpDir:           "",
 	},
+	ResendCount: 1,
 }

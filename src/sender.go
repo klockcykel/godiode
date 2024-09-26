@@ -233,6 +233,9 @@ func send(conf *Config, dir string) error {
 		}
 	}
 	c, err := net.DialUDP("udp", baddr, maddr)
+	if err != nil {
+		return err
+	}
 	defer c.Close()
 	if err != nil {
 		return err
